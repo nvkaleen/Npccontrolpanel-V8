@@ -1,0 +1,507 @@
+-- Self-replacement: remove previous instance before starting  
+local CONTROL_KEY = "NPCControlPanel_Instance"  
+  
+if _G[CONTROL_KEY] and typeof(_G[CONTROL_KEY]) == "function" then  
+	_G[CONTROL_KEY]()  
+end  
+  
+local Players = game:GetService("Players")  
+local UserInputService = game:GetService("UserInputService")  
+local RunService = game:GetService("RunService")  
+local player = Players.LocalPlayer  
+local mouse = player:GetMouse()  
+local playerGui = player:WaitForChild("PlayerGui")  
+  
+local GUI_NAMES = {"NPCControlGUICeraulean", "NPCControlGUI"}  
+  
+local connections = {}  
+local function track(conn)  
+	table.insert(connections, conn)  
+	return conn  
+end  
+  
+local states = {  
+	killNPCs = false, pushNPCs = false, nk = false,  
+	freeze = false, killClick = false, fling = false,  
+	objDel = false, autoFling = false
+}  
+local anchorActive = false  
+local loopEpoch = 0  
+  
+-- Modifiable variables  
+local pushStrength = 150  
+local pushRange = 15  
+local flingStrength = 300  
+local pushRangeVisual = nil  
+  
+local function destroyOldGuis()  
+	for _, name in ipairs(GUI_NAMES) do  
+		local oldGui = playerGui:FindFirstChild(name)  
+		if oldGui then oldGui:Destroy() end  
+	end  
+end  
+  
+local function cleanup()  
+	loopEpoch = loopEpoch + 1  
+	for k in pairs(states) do states[k] = false end  
+	anchorActive = false  
+	for _, conn in ipairs(connections) do  
+		if conn.Connected then conn:Disconnect() end  
+	end  
+	table.clear(connections)  
+	if pushRangeVisual then pushRangeVisual:Destroy() pushRangeVisual = nil end  
+	destroyOldGuis()  
+end  
+  
+_G[CONTROL_KEY] = cleanup  
+destroyOldGuis()  
+  
+-- GUI Setup  
+local gui = Instance.new("ScreenGui")  
+gui.Name = "NPCControlGUICeraulean"  
+gui.ResetOnSpawn = false  
+gui.IgnoreGuiInset = true 
+gui.Parent = playerGui  
+  
+local mainFrame = Instance.new("Frame")  
+mainFrame.Size = UDim2.new(0, 420, 0, 460) -- Height increased for new row
+mainFrame.Position = UDim2.new(0.5, -210, 0.2, 0)  
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)  
+mainFrame.Active = true  
+mainFrame.Parent = gui  
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)  
+  
+local topBar = Instance.new("Frame")  
+topBar.Size = UDim2.new(1, 0, 0, 35)  
+topBar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)  
+topBar.Parent = mainFrame  
+Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 8)  
+  
+local title = Instance.new("TextLabel")  
+title.Size = UDim2.new(1, -40, 1, 0)  
+title.BackgroundTransparency = 1  
+title.Text = "NPC Control Panel"  
+title.Font = Enum.Font.GothamBold  
+title.TextColor3 = Color3.new(1, 1, 1)  
+title.TextSize = 14  
+title.Parent = topBar  
+  
+local gearBtn = Instance.new("TextButton")  
+gearBtn.Size = UDim2.new(0, 34, 0, 28)  
+gearBtn.Position = UDim2.new(1, -38, 0, 3)  
+gearBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)  
+gearBtn.Text = "SET"  
+gearBtn.Font = Enum.Font.GothamBold  
+gearBtn.TextSize = 11  
+gearBtn.TextColor3 = Color3.new(1, 1, 1)  
+gearBtn.ZIndex = 2  
+gearBtn.Parent = topBar  
+Instance.new("UICorner", gearBtn).CornerRadius = UDim.new(0, 6)  
+  
+local settingsFrame = Instance.new("Frame")  
+settingsFrame.Size = UDim2.new(0, 380, 0, 325)  
+settingsFrame.Position = UDim2.new(0.5, -190, 0.35, 0)  
+settingsFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)  
+settingsFrame.Visible = false  
+settingsFrame.Active = true  
+settingsFrame.ZIndex = 5  
+settingsFrame.Parent = gui  
+Instance.new("UICorner", settingsFrame).CornerRadius = UDim.new(0, 8)  
+  
+local settingsTopBar = Instance.new("Frame")  
+settingsTopBar.Size = UDim2.new(1, 0, 0, 35)  
+settingsTopBar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)  
+settingsTopBar.ZIndex = 6  
+settingsTopBar.Parent = settingsFrame  
+Instance.new("UICorner", settingsTopBar).CornerRadius = UDim.new(0, 8)  
+  
+local settingsTitle = Instance.new("TextLabel")  
+settingsTitle.Size = UDim2.new(1, -40, 1, 0)  
+settingsTitle.BackgroundTransparency = 1  
+settingsTitle.Text = "Settings"  
+settingsTitle.Font = Enum.Font.GothamBold  
+settingsTitle.TextColor3 = Color3.new(1, 1, 1)  
+settingsTitle.TextSize = 14  
+settingsTitle.ZIndex = 7  
+settingsTitle.Parent = settingsTopBar  
+  
+local settingsCloseBtn = Instance.new("TextButton")  
+settingsCloseBtn.Size = UDim2.new(0, 30, 0, 30)  
+settingsCloseBtn.Position = UDim2.new(1, -33, 0, 2)  
+settingsCloseBtn.BackgroundColor3 = Color3.fromRGB(139, 0, 0)  
+settingsCloseBtn.Text = "X"  
+settingsCloseBtn.Font = Enum.Font.GothamBold  
+settingsCloseBtn.TextSize = 14  
+settingsCloseBtn.TextColor3 = Color3.new(1, 1, 1)  
+settingsCloseBtn.ZIndex = 7  
+settingsCloseBtn.Parent = settingsTopBar  
+Instance.new("UICorner", settingsCloseBtn).CornerRadius = UDim.new(0, 6)  
+  
+local function makeDraggable(dragBar, frame)  
+	local dragging, dragStart, startPos  
+	track(dragBar.InputBegan:Connect(function(input)  
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then  
+			dragging = true  
+			dragStart = input.Position  
+			startPos = frame.Position  
+		end  
+	end))  
+	track(UserInputService.InputChanged:Connect(function(input)  
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then  
+			local delta = input.Position - dragStart  
+			frame.Position = UDim2.new(  
+				startPos.X.Scale, startPos.X.Offset + delta.X,  
+				startPos.Y.Scale, startPos.Y.Offset + delta.Y  
+			)  
+		end  
+	end))  
+	track(UserInputService.InputEnded:Connect(function(input)  
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end  
+	end))  
+end  
+  
+makeDraggable(topBar, mainFrame)  
+makeDraggable(settingsTopBar, settingsFrame)  
+  
+local function createSettingSlider(parent, yPos, labelText, defaultValue, minVal, maxVal, onChanged, onStateChange)  
+	local section = Instance.new("Frame")  
+	section.Size = UDim2.new(1, -30, 0, 75)  
+	section.Position = UDim2.new(0, 15, 0, yPos)  
+	section.BackgroundTransparency = 1  
+	section.ZIndex = 6  
+	section.Parent = parent  
+  
+	local label = Instance.new("TextLabel")  
+	label.Size = UDim2.new(1, -60, 0, 18)  
+	label.BackgroundTransparency = 1  
+	label.Text = labelText  
+	label.Font = Enum.Font.Gotham  
+	label.TextSize = 13  
+	label.TextColor3 = Color3.fromRGB(220, 220, 220)  
+	label.TextXAlignment = Enum.TextXAlignment.Left  
+	label.ZIndex = 7  
+	label.Parent = section  
+  
+	local sliderTrack = Instance.new("Frame")  
+	sliderTrack.Size = UDim2.new(1, -65, 0, 8)  
+	sliderTrack.Position = UDim2.new(0, 0, 0, 28)  
+	sliderTrack.BackgroundColor3 = Color3.fromRGB(55, 55, 55)  
+	sliderTrack.Active = true  
+	sliderTrack.ZIndex = 7  
+	sliderTrack.Parent = section  
+	Instance.new("UICorner", sliderTrack).CornerRadius = UDim.new(1, 0)  
+  
+	local fill = Instance.new("Frame")  
+	fill.Size = UDim2.new(0, 0, 1, 0)  
+	fill.BackgroundColor3 = Color3.fromRGB(0, 170, 255)  
+	fill.BorderSizePixel = 0  
+	fill.ZIndex = 7  
+	fill.Parent = sliderTrack  
+	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)  
+  
+	local knob = Instance.new("Frame")  
+	knob.Size = UDim2.new(0, 18, 0, 18)  
+	knob.AnchorPoint = Vector2.new(0.5, 0.5)  
+	knob.Position = UDim2.new(0, 0, 0.5, 0)  
+	knob.BackgroundColor3 = Color3.fromRGB(0, 170, 255)  
+	knob.ZIndex = 8  
+	knob.Parent = sliderTrack  
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)  
+  
+	local valueBtn = Instance.new("TextButton")  
+	valueBtn.Size = UDim2.new(0, 55, 0, 28)  
+	valueBtn.Position = UDim2.new(1, -55, 0, 22)  
+	valueBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)  
+	valueBtn.Text = tostring(defaultValue)  
+	valueBtn.Font = Enum.Font.GothamBold  
+	valueBtn.TextSize = 14  
+	valueBtn.TextColor3 = Color3.new(1, 1, 1)  
+	valueBtn.ZIndex = 7  
+	valueBtn.Parent = section  
+	Instance.new("UICorner", valueBtn).CornerRadius = UDim.new(0, 6)  
+  
+	local currentValue = defaultValue  
+	local isDragging = false  
+  
+	local function updateSlider(value)  
+		currentValue = math.clamp(math.floor(value or 0), minVal, maxVal)  
+		local alpha = (currentValue - minVal) / (maxVal - minVal)  
+		knob.Position = UDim2.new(alpha, 0, 0.5, 0)  
+		fill.Size = UDim2.new(alpha, 0, 1, 0)  
+		valueBtn.Text = tostring(currentValue)  
+		onChanged(currentValue)  
+	end  
+  
+	local function dragLogic()  
+		local mousePos = UserInputService:GetMouseLocation()  
+		local trackPos = sliderTrack.AbsolutePosition.X  
+		local trackSize = sliderTrack.AbsoluteSize.X  
+		if trackSize <= 0 then return end  
+		local alpha = math.clamp((mousePos.X - trackPos) / trackSize, 0, 1)  
+		updateSlider(minVal + (alpha * (maxVal - minVal)))  
+	end  
+  
+	track(sliderTrack.InputBegan:Connect(function(input)  
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then  
+			isDragging = true  
+			if onStateChange then onStateChange(true) end  
+			dragLogic()  
+		end  
+	end))  
+  
+	track(RunService.RenderStepped:Connect(function()  
+		if isDragging then  
+			if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then  
+				isDragging = false  
+				if onStateChange then onStateChange(false) end  
+				return  
+			end  
+			dragLogic()  
+		end  
+	end))  
+  
+	local lastClick = 0  
+	track(valueBtn.MouseButton1Click:Connect(function()  
+		local now = tick()  
+		if now - lastClick < 0.4 then  
+			if onStateChange then onStateChange(true) end  
+			local box = Instance.new("TextBox")  
+			box.Size, box.Position = valueBtn.Size, valueBtn.Position  
+			box.BackgroundColor3 = Color3.fromRGB(30, 30, 30)  
+			box.Text = valueBtn.Text  
+			box.Font, box.TextSize = valueBtn.Font, valueBtn.TextSize  
+			box.TextColor3 = Color3.new(1,1,1)  
+			box.ZIndex = 10  
+			box.Parent = section  
+			Instance.new("UICorner", box)  
+			box:CaptureFocus()  
+  
+			box:GetPropertyChangedSignal("Text"):Connect(function()
+				local n = tonumber(box.Text)
+				if n then updateSlider(n) end
+			end)
+  
+			box.FocusLost:Connect(function(enter)  
+				if enter then  
+					local n = tonumber(box.Text)  
+					if n then updateSlider(n) end  
+				end  
+				box:Destroy()  
+				if onStateChange then onStateChange(false) end  
+			end)  
+		end  
+		lastClick = now  
+	end))  
+  
+	updateSlider(defaultValue)  
+end  
+  
+-- Visual Hitbox
+pushRangeVisual = Instance.new("Part")  
+pushRangeVisual.Shape, pushRangeVisual.Material = Enum.PartType.Ball, Enum.Material.Neon  
+pushRangeVisual.Color, pushRangeVisual.Transparency = Color3.fromRGB(0, 170, 255), 0.9  
+pushRangeVisual.Anchored, pushRangeVisual.CanCollide = true, false  
+pushRangeVisual.CanTouch, pushRangeVisual.CanQuery = false, false  
+  
+local visualizerConn  
+local function setVisualizerActive(active)  
+	if active then  
+		pushRangeVisual.Parent = workspace.CurrentCamera  
+		if not visualizerConn then  
+			visualizerConn = track(RunService.RenderStepped:Connect(function()  
+				local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")  
+				if hrp then  
+					pushRangeVisual.CFrame = hrp.CFrame  
+					pushRangeVisual.Size = Vector3.new(pushRange * 2, pushRange * 2, pushRange * 2)  
+				else  
+					pushRangeVisual.CFrame = CFrame.new(0, -999, 0)  
+				end  
+			end))  
+		end  
+	else  
+		pushRangeVisual.Parent = nil  
+		if visualizerConn then visualizerConn:Disconnect() visualizerConn = nil end  
+	end  
+end  
+  
+createSettingSlider(settingsFrame, 45, "Push Strength", pushStrength, 1, 2500, function(v) pushStrength = v end)  
+createSettingSlider(settingsFrame, 130, "Fling Strength", flingStrength, 1, 2000, function(v) flingStrength = v end)  
+createSettingSlider(settingsFrame, 215, "Push Range", pushRange, 1, 10000, function(v) pushRange = v end, setVisualizerActive)  
+  
+track(gearBtn.MouseButton1Click:Connect(function() settingsFrame.Visible = not settingsFrame.Visible end))  
+track(settingsCloseBtn.MouseButton1Click:Connect(function() settingsFrame.Visible = false setVisualizerActive(false) end))  
+  
+local function createButton(text, pos, color)  
+	local btn = Instance.new("TextButton")  
+	btn.Size, btn.Position = UDim2.new(0, 180, 0, 35), pos  
+	btn.BackgroundColor3, btn.Text = color, text  
+	btn.Font, btn.TextSize, btn.TextColor3 = Enum.Font.GothamBold, 12, Color3.new(1, 1, 1)  
+	btn.Parent = mainFrame  
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)  
+	return btn  
+end  
+  
+local killBtn = createButton("Start Kill NPCs", UDim2.new(0, 15, 0, 45), Color3.fromRGB(46, 139, 87))  
+local npcDeleterBtn = createButton("NPC Deleter", UDim2.new(0, 220, 0, 45), Color3.fromRGB(218, 165, 32))  
+local pushBtn = createButton("Start Push", UDim2.new(0, 15, 0, 95), Color3.fromRGB(70, 130, 180))  
+local nkBtn = createButton("NK Click OFF", UDim2.new(0, 220, 0, 95), Color3.fromRGB(105, 105, 105))  
+local freezeBtn = createButton("Freeze NPC OFF", UDim2.new(0, 15, 0, 145), Color3.fromRGB(105, 105, 105))  
+local killClickBtn = createButton("Kill NPC Clicker OFF", UDim2.new(0, 220, 0, 145), Color3.fromRGB(105, 105, 105))  
+local flingBtn = createButton("Fling NPC Click OFF", UDim2.new(0, 15, 0, 195), Color3.fromRGB(105, 105, 105))  
+local objectDeleteBtn = createButton("Object Deleter OFF", UDim2.new(0, 220, 0, 195), Color3.fromRGB(105, 105, 105))  
+local flingAllBtn = createButton("Fling All NPCs", UDim2.new(0, 15, 0, 245), Color3.fromRGB(123, 104, 238))  
+local autoFlingBtn = createButton("Auto Fling All OFF", UDim2.new(0, 220, 0, 245), Color3.fromRGB(105, 105, 105))  
+
+-- New Bring Button Row
+local bringAllBtn = createButton("Bring All NPCs", UDim2.new(0, 15, 0, 295), Color3.fromRGB(0, 139, 139))  
+
+local stopBtn = createButton("Stop All Mods [X]", UDim2.new(0, 15, 0, 345), Color3.fromRGB(139, 0, 0))  
+stopBtn.Size = UDim2.new(0, 390, 0, 35)  
+local anchorToggleBtn = createButton("Anchor Toggle: OFF", UDim2.new(0, 15, 0, 395), Color3.fromRGB(170, 0, 0))  
+  
+local function resetStates()  
+	loopEpoch = loopEpoch + 1  
+	for k in pairs(states) do states[k] = false end  
+	killBtn.Text, killBtn.BackgroundColor3 = "Start Kill NPCs", Color3.fromRGB(46, 139, 87)  
+	pushBtn.Text, pushBtn.BackgroundColor3 = "Start Push", Color3.fromRGB(70, 130, 180)  
+	nkBtn.BackgroundColor3, freezeBtn.BackgroundColor3 = Color3.fromRGB(105, 105, 105), Color3.fromRGB(105, 105, 105)  
+	killClickBtn.BackgroundColor3, flingBtn.BackgroundColor3 = Color3.fromRGB(105, 105, 105), Color3.fromRGB(105, 105, 105)  
+	objectDeleteBtn.BackgroundColor3, autoFlingBtn.BackgroundColor3 = Color3.fromRGB(105, 105, 105), Color3.fromRGB(105, 105, 105)
+	autoFlingBtn.Text = "Auto Fling All OFF"
+end  
+  
+local function flingNPC(character)
+	local hrp = character:FindFirstChild("HumanoidRootPart")
+	if hrp and not hrp.Anchored then
+		local dir = Vector3.new(math.random(-100, 100)/100, 1, math.random(-100, 100)/100).Unit
+		hrp.Velocity = dir * flingStrength
+	end
+end
+
+local function flingAll()
+	for _, d in pairs(workspace:GetDescendants()) do
+		if d:IsA("Humanoid") and not Players:GetPlayerFromCharacter(d.Parent) then
+			flingNPC(d.Parent)
+		end
+	end
+end
+
+local function bringAll()
+	local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	for _, d in pairs(workspace:GetDescendants()) do
+		if d:IsA("Humanoid") and not Players:GetPlayerFromCharacter(d.Parent) then
+			local tHrp = d.Parent:FindFirstChild("HumanoidRootPart")
+			if tHrp then
+				tHrp.CFrame = hrp.CFrame * CFrame.new(0, 0, -5) -- Land them in front
+				tHrp.Velocity = Vector3.new(0, 0, 0) -- Reset momentum
+			end
+		end
+	end
+end
+
+track(mouse.Button1Down:Connect(function()  
+	local target = mouse.Target  
+	if not target then return end  
+	local model = target:FindFirstAncestorOfClass("Model")  
+	local hum = model and model:FindFirstChildOfClass("Humanoid")  
+	local isNPC = hum and not Players:GetPlayerFromCharacter(model)  
+  
+	if states.nk and isNPC then model:Destroy()  
+	elseif states.freeze and target:IsA("BasePart") then target.Anchored = not target.Anchored  
+	elseif states.killClick and hum then hum.Health = 0  
+	elseif states.fling and isNPC then flingNPC(model)
+	elseif states.objDel then target:Destroy() end  
+	if anchorActive and target:IsA("BasePart") then target.Anchored = not target.Anchored end  
+end))  
+  
+local function toggleMode(modeName, btn)  
+	local current = states[modeName]  
+	resetStates()  
+	states[modeName] = not current  
+	btn.BackgroundColor3 = states[modeName] and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(105, 105, 105)  
+end  
+  
+track(killBtn.MouseButton1Click:Connect(function()  
+	states.killNPCs = not states.killNPCs  
+	killBtn.Text = states.killNPCs and "Stop Kill NPCs" or "Start Kill NPCs"  
+	killBtn.BackgroundColor3 = states.killNPCs and Color3.fromRGB(178, 34, 34) or Color3.fromRGB(46, 139, 87)  
+	if states.killNPCs then  
+		task.spawn(function()  
+			local myEpoch = loopEpoch  
+			while states.killNPCs and myEpoch == loopEpoch do  
+				for _, d in pairs(workspace:GetDescendants()) do  
+					if d:IsA("Humanoid") and not Players:GetPlayerFromCharacter(d.Parent) then d.Health = 0 end  
+				end  
+				task.wait(0.5)  
+			end  
+		end)  
+	end  
+end))  
+  
+track(pushBtn.MouseButton1Click:Connect(function()  
+	states.pushNPCs = not states.pushNPCs  
+	pushBtn.Text = states.pushNPCs and "Stop Push" or "Start Push"  
+	pushBtn.BackgroundColor3 = states.pushNPCs and Color3.fromRGB(178, 34, 34) or Color3.fromRGB(70, 130, 180)  
+	if states.pushNPCs then  
+		task.spawn(function()  
+			local myEpoch = loopEpoch  
+			while states.pushNPCs and myEpoch == loopEpoch do  
+				local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")  
+				if hrp then  
+					for _, d in pairs(workspace:GetDescendants()) do  
+						if d:IsA("Humanoid") and d.Parent ~= player.Character and not Players:GetPlayerFromCharacter(d.Parent) then  
+							local tHrp = d.Parent:FindFirstChild("HumanoidRootPart")  
+							if tHrp and (tHrp.Position - hrp.Position).Magnitude <= pushRange then  
+								tHrp.Velocity = (tHrp.Position - hrp.Position).Unit * pushStrength + Vector3.new(0, 20, 0)  
+							end  
+						end  
+					end  
+				end  
+				task.wait(0.1)  
+			end  
+		end)  
+	end  
+end))  
+
+track(flingAllBtn.MouseButton1Click:Connect(flingAll))
+track(bringAllBtn.MouseButton1Click:Connect(bringAll))
+
+track(autoFlingBtn.MouseButton1Click:Connect(function()
+	states.autoFling = not states.autoFling
+	autoFlingBtn.Text = states.autoFling and "Auto Fling All ON" or "Auto Fling All OFF"
+	autoFlingBtn.BackgroundColor3 = states.autoFling and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(105, 105, 105)
+	if states.autoFling then
+		task.spawn(function()
+			local myEpoch = loopEpoch
+			while states.autoFling and myEpoch == loopEpoch do
+				flingAll()
+				task.wait(0.1)
+			end
+		end)
+	end
+end))
+  
+track(nkBtn.MouseButton1Click:Connect(function() toggleMode("nk", nkBtn) end))  
+track(freezeBtn.MouseButton1Click:Connect(function() toggleMode("freeze", freezeBtn) end))  
+track(killClickBtn.MouseButton1Click:Connect(function() toggleMode("killClick", killClickBtn) end))  
+track(flingBtn.MouseButton1Click:Connect(function() toggleMode("fling", flingBtn) end))  
+track(objectDeleteBtn.MouseButton1Click:Connect(function() toggleMode("objDel", objectDeleteBtn) end))  
+track(anchorToggleBtn.MouseButton1Click:Connect(function()  
+	anchorActive = not anchorActive  
+	anchorToggleBtn.Text = "Anchor Toggle: " .. (anchorActive and "ON" or "OFF")  
+	anchorToggleBtn.BackgroundColor3 = anchorActive and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(170, 0, 0)  
+end))  
+track(npcDeleterBtn.MouseButton1Click:Connect(function()  
+	for _, d in pairs(workspace:GetDescendants()) do  
+		if d:IsA("Humanoid") and not Players:GetPlayerFromCharacter(d.Parent) then d.Parent:Destroy() end  
+	end  
+end))  
+track(stopBtn.MouseButton1Click:Connect(resetStates))  
+  
+track(UserInputService.InputBegan:Connect(function(i, g)  
+	if not g then  
+		if i.KeyCode == Enum.KeyCode.X then resetStates()  
+		elseif i.KeyCode == Enum.KeyCode.Insert or i.KeyCode == Enum.KeyCode.C then mainFrame.Visible = not mainFrame.Visible end  
+	end  
+end))
