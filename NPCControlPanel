@@ -28,7 +28,6 @@ local states = {
 local anchorActive = false  
 local loopEpoch = 0  
   
--- Modifiable variables  
 local pushStrength = 150  
 local pushRange = 15  
 local flingStrength = 300  
@@ -69,6 +68,7 @@ mainFrame.Size = UDim2.new(0, 420, 0, 400)
 mainFrame.Position = UDim2.new(0.5, -210, 0.2, 0)  
 mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)  
 mainFrame.Active = true  
+mainFrame.Visible = true -- FIXED
 mainFrame.Parent = gui  
 Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)  
   
@@ -99,15 +99,18 @@ gearBtn.ZIndex = 2
 gearBtn.Parent = topBar  
 Instance.new("UICorner", gearBtn).CornerRadius = UDim.new(0, 6)  
 
--- Scrolling Window
+-- FIXED SCROLLING AREA
 local scrollFrame = Instance.new("ScrollingFrame")
-scrollFrame.Size = UDim2.new(1, -20, 1, -110)
+scrollFrame.Size = UDim2.new(1, -20, 1, -115)
 scrollFrame.Position = UDim2.new(0, 10, 0, 45)
 scrollFrame.BackgroundTransparency = 1
 scrollFrame.BorderSizePixel = 0
-scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 500)
 scrollFrame.ScrollBarThickness = 4
-scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 60, 60)
+scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y -- Automatically resizes
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
+scrollFrame.ClipsDescendants = true
+scrollFrame.Visible = true
 scrollFrame.Parent = mainFrame
 
 local listLayout = Instance.new("UIGridLayout")
@@ -125,13 +128,6 @@ settingsFrame.Active = true
 settingsFrame.ZIndex = 10  
 settingsFrame.Parent = gui  
 Instance.new("UICorner", settingsFrame).CornerRadius = UDim.new(0, 8)  
-  
-local settingsTopBar = Instance.new("Frame")  
-settingsTopBar.Size = UDim2.new(1, 0, 0, 35)  
-settingsTopBar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)  
-settingsTopBar.ZIndex = 11  
-settingsTopBar.Parent = settingsFrame  
-Instance.new("UICorner", settingsTopBar).CornerRadius = UDim.new(0, 8)  
   
 local function makeDraggable(dragBar, frame)  
 	local dragging, dragStart, startPos  
@@ -303,6 +299,7 @@ local function createButton(text, color)
 	btn.BackgroundColor3, btn.Text = color, text  
 	btn.Font, btn.TextSize, btn.TextColor3 = Enum.Font.GothamBold, 11, Color3.new(1, 1, 1)  
 	btn.Parent = scrollFrame  
+	btn.Visible = true
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)  
 	return btn  
 end  
@@ -326,6 +323,7 @@ stopBtn.Position = UDim2.new(0, 10, 1, -65)
 stopBtn.BackgroundColor3 = Color3.fromRGB(139, 0, 0)
 stopBtn.Text = "Stop All Mods [X]"
 stopBtn.Font, stopBtn.TextSize, stopBtn.TextColor3 = Enum.Font.GothamBold, 12, Color3.new(1,1,1)
+stopBtn.Visible = true
 stopBtn.Parent = mainFrame
 Instance.new("UICorner", stopBtn)
 
@@ -335,6 +333,7 @@ anchorToggleBtn.Position = UDim2.new(0, 10, 1, -30)
 anchorToggleBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
 anchorToggleBtn.Text = "Anchor Toggle: OFF"
 anchorToggleBtn.Font, anchorToggleBtn.TextSize, anchorToggleBtn.TextColor3 = Enum.Font.GothamBold, 11, Color3.new(1,1,1)
+anchorToggleBtn.Visible = true
 anchorToggleBtn.Parent = mainFrame
 Instance.new("UICorner", anchorToggleBtn)
   
@@ -379,7 +378,7 @@ track(mouse.Button1Down:Connect(function()
 	if anchorActive and target:IsA("BasePart") then target.Anchored = not target.Anchored end  
 end))  
   
-local function toggleMode(modeName, btn, label)  
+local function toggleMode(modeName, btn)  
 	local current = states[modeName]  
 	resetStates()  
 	states[modeName] = not current  
